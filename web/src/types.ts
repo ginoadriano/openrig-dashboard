@@ -48,6 +48,8 @@ export interface QueueItem {
   sourceSession: string
   destinationSession: string
   body: string
+  summary?: string | null
+  evidenceRef?: string | null
   tags: string[]
   tsCreated: string
   tsUpdated: string

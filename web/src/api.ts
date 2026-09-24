@@ -131,8 +131,15 @@ export async function createQueue(input: {
   body: string
   priority?: string
   tags?: string[]
+  summary?: string
+  evidenceRef?: string
 }): Promise<QueueItem> {
   if (mockMode) {
+    const humanDestination =
+      /^human(?:-[^@]+)?@(kernel|host)$/.test(input.destinationSession) ||
+      input.destinationSession.endsWith('@external')
+    if (humanDestination && (!input.summary?.trim() || !input.evidenceRef?.trim()))
+      throw new Error('summary and evidenceRef are required for human-routed tasks')
     const now = new Date().toISOString()
     const item: QueueDetail = {
       qitemId: `qitem-mock-${Date.now()}`,
@@ -142,6 +149,8 @@ export async function createQueue(input: {
       sourceSession: 'operator@dashboard',
       destinationSession: input.destinationSession,
       body: input.body,
+      summary: input.summary ?? null,
+      evidenceRef: input.evidenceRef ?? null,
       tags: input.tags ?? [],
       tsCreated: now,
       tsUpdated: now,

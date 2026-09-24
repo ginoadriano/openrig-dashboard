@@ -22,6 +22,8 @@ const transitionTime = (value: string | null | undefined) => {
   const date = value ? new Date(value) : null
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Time unknown'
 }
+const isHumanDestination = (session: string) =>
+  /^human(?:-[^@]+)?@(kernel|host)$/.test(session) || session.endsWith('@external')
 
 export function QueueView({ fleet, seatSession, onOpenOwner, refreshKey = 0 }: QueueViewProps) {
   const [items, setItems] = useState<QueueItem[]>([])
@@ -312,17 +314,30 @@ function NewTaskDialog({
   const [destinationSession, setDestinationSession] = useState(seats[0]?.session ?? '')
   const [body, setBody] = useState('')
   const [priority, setPriority] = useState('routine')
+  const [summary, setSummary] = useState('')
+  const [evidenceRef, setEvidenceRef] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const create = async () => {
+    const humanDestination = isHumanDestination(destinationSession)
     if (!destinationSession || !body.trim()) {
       setError('Choose a destination and write the task body.')
+      return
+    }
+    if (humanDestination && (!summary.trim() || !evidenceRef.trim())) {
+      setError('A summary and evidence reference are required for a human-routed task.')
       return
     }
     try {
       setSaving(true)
       setError(null)
-      await createQueue({ destinationSession, body: body.trim(), priority })
+      await createQueue({
+        destinationSession,
+        body: body.trim(),
+        priority,
+        summary: summary.trim() || undefined,
+        evidenceRef: evidenceRef.trim() || undefined,
+      })
       await onCreated()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not create task')
@@ -352,6 +367,28 @@ function NewTaskDialog({
             ))}
           </select>
         </label>
+        {isHumanDestination(destinationSession) && (
+          <>
+            <label>
+              Summary
+              <input
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+                placeholder="Concise decision or requested outcome"
+                required
+              />
+            </label>
+            <label>
+              Evidence reference
+              <input
+                value={evidenceRef}
+                onChange={(event) => setEvidenceRef(event.target.value)}
+                placeholder="Queue item, file path, or URL with supporting context"
+                required
+              />
+            </label>
+          </>
+        )}
         <label>
           Priority
           <select value={priority} onChange={(event) => setPriority(event.target.value)}>
