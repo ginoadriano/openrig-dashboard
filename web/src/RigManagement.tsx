@@ -378,7 +378,7 @@ export function SeatManagement({ seat, onResult }: { seat: Seat; onResult: (r: A
   }, [seat.session])
   return (
     <div className="seat-manage">
-      <h3>Beheer</h3>
+      <h3>Management</h3>
       {error && (
         <p className="action-error" role="alert">
           {error}

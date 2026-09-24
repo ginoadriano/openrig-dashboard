@@ -71,7 +71,7 @@ export function QueueView({ fleet, seatSession, onOpenOwner, refreshKey = 0 }: Q
       <header className="page-header queue-header">
         <div>
           <p className="eyebrow">Coordination</p>
-          <h1>{seatSession ? 'Tasks' : 'Taken'}</h1>
+          <h1>Tasks</h1>
           <p className="subtitle">
             {seatSession ? `Work assigned to ${seatSession}` : 'Open work, handoffs and blocked decisions.'}
           </p>
@@ -375,7 +375,7 @@ function NewTaskDialog({
                 </option>
               ))}
             </optgroup>
-            <optgroup label="Mens">
+            <optgroup label="Human">
               <option value="human@kernel">human@kernel</option>
               <option value={otherHumanOption}>Other human address…</option>
             </optgroup>

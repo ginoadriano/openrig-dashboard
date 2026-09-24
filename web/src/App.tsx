@@ -168,7 +168,7 @@ function App() {
           type="button"
         >
           <span>✓</span>
-          Taken
+          Tasks
         </button>
         <button className="tasks-nav" onClick={() => setView({ kind: 'discovery' })} type="button">
           ⌁ Discover sessions
@@ -381,7 +381,7 @@ function SeatDetail({
           onClick={() => onTab('tasks')}
           type="button"
         >
-          Taken
+          Tasks
         </button>
       </div>
       <div className="tab-panel">
@@ -443,7 +443,7 @@ function ChatPane({ session }: { session: string }) {
       if (!result.ok) throw new Error(result.error ?? 'Message was not delivered')
       if (!aliveRef.current) return
       setNotice(
-        `Verzonden · ${new Intl.DateTimeFormat(undefined, {
+        `Sent · ${new Intl.DateTimeFormat(undefined, {
           hour: '2-digit',
           minute: '2-digit',
         }).format(new Date())}`,
