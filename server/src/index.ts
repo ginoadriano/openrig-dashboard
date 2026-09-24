@@ -757,7 +757,15 @@ app.get("/dash/queue", async (c) => {
     if (sessionFilter) params.set("destinationSession", sessionFilter);
     if (state) params.set("state", state);
     if (activeOnly) params.set("activeOnly", activeOnly);
-    if (parsedLimit !== null) params.set("limit", String(parsedLimit));
+    // Slotcontrole #1: when a rig filter is active, query the daemon with limit=1000
+    // (to get a complete snapshot of active items for the rig), filter by the fleet
+    // roster, then finally cap at the user-requested limit.
+    const userLimit = parsedLimit;
+    if (rosterSessions) {
+      params.set("limit", "1000");
+    } else if (parsedLimit !== null) {
+      params.set("limit", String(parsedLimit));
+    }
 
     const qs = params.toString();
     const res = await daemonFetch(`/api/queue/list${qs ? `?${qs}` : ""}`);
@@ -775,6 +783,10 @@ app.get("/dash/queue", async (c) => {
         || (q.sourceSession?.endsWith(`@${resolvedRigName}`))
         || (q.destinationSession?.endsWith(`@${resolvedRigName}`));
       items = items.filter(touchesRig);
+      // Apply the requested limit AFTER the roster filter.
+      if (userLimit !== null && items.length > userLimit) {
+        items = items.slice(0, userLimit);
+      }
     }
 
     return c.json({ items });
@@ -805,6 +817,25 @@ app.get("/dash/queue/:qitemId", async (c) => {
   }
 });
 
+// Slotcontrole #3: normalize a session that lacks `@rig` to its full daemon address
+// via the fleet roster. Returns the normalized session, or the original if no
+// unique rig can be determined.
+// Slotcontrole #3: refuse queue items for sessions without `@rig` suffix.
+// The daemon cannot deliver wakes to sessions whose canonical name lacks the
+// @rig suffix (it creates the queue item but fails to find the tmux session).
+async function rejectBareSession(session: string): Promise<string | null> {
+  if (session.includes("@")) return null;
+  const seats = await fetchFleetData();
+  for (const r of seats.rigs) {
+    for (const s of r.seats) {
+      if (s.session === session) {
+        return `Seat '${session}' (logicalId ${s.logicalId}) cannot receive queue tasks: its tmux session is named '${session}', but the daemon addresses it as '${session}@${r.name}' and cannot deliver there. Use Chat to send a message, or rebind the seat with a proper session name like '${session}@${r.name}'.`;
+      }
+    }
+  }
+  return null;
+}
+
 app.post("/dash/queue", async (c) => {
   let body: { destinationSession: string; body: string; priority?: string; tags?: string[]; summary?: string; evidenceRef?: string };
   try {
@@ -820,6 +851,9 @@ app.post("/dash/queue", async (c) => {
     return c.json({ error: "invalid summary (must be a string)" }, 400);
   if (body.evidenceRef !== undefined && typeof body.evidenceRef !== "string")
     return c.json({ error: "invalid evidenceRef (must be a string)" }, 400);
+
+  const bare = await rejectBareSession(body.destinationSession);
+  if (bare) return c.json({ error: bare }, 400);
 
   try {
     const daemonBody: Record<string, unknown> = {

@@ -72,18 +72,26 @@ export function resolveNeedsYouSession(
   }
 
   // M5: logicalId mapping for seats whose canonical name deviates from member@rig.
+  // Slotcontrole #2: try ALL dash positions as the pod↔member boundary.
+  // Accept resolution only when exactly one split produces exactly one match.
   if (identityPrefix) {
     const at = identityPrefix.lastIndexOf("@");
     if (at > 0 && at < identityPrefix.length - 1) {
       const name = identityPrefix.slice(0, at);
       const rig = identityPrefix.slice(at + 1);
-      const dash = name.lastIndexOf("-");
-      if (dash > 0 && dash < name.length - 1) {
-        const pod = name.slice(0, dash);
-        const member = name.slice(dash + 1);
+      let bestMatch: string | null = null;
+      for (let idx = 0; idx < name.length; idx++) {
+        if (name[idx] !== "-") continue;
+        const pod = name.slice(0, idx);
+        const member = name.slice(idx + 1);
+        if (!pod || !member) continue;
         const resolved = canonicalSessionForLogicalId(liveSessions, rig, `${pod}.${member}`);
-        if (resolved) return resolved;
+        if (resolved) {
+          if (bestMatch !== null) return null; // ambiguous — two different splits match
+          bestMatch = resolved;
+        }
       }
+      if (bestMatch) return bestMatch;
     }
   }
 

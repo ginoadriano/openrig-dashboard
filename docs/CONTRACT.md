@@ -89,7 +89,7 @@ interface QueueTransition { at: string; fromState: string | null; toState: strin
 |---|---|---|
 | GET | `/dash/queue?rig=&session=&state=a,b&activeOnly=1&limit=` | `{ items: QueueItem[] }` (nieuwste eerst) |
 | GET | `/dash/queue/:qitemId` | `QueueItem & { transitions: QueueTransition[] }` |
-| POST | `/dash/queue` body `{ destinationSession, body, priority?, tags?, summary?, evidenceRef? }` | `QueueItem` of `{ error }` — `summary`/`evidenceRef` zijn verplicht voor human-routed bestemmingen (daemon `human_route_fields_required`) en worden doorgestuurd als de UI ze stuurt. |
+| POST | `/dash/queue` body `{ destinationSession, body, priority?, tags?, summary?, evidenceRef? }` | `QueueItem` of `{ error }` — `summary`/`evidenceRef` zijn verplicht voor human-routed bestemmingen (daemon `human_route_fields_required`) en worden doorgestuurd als de UI ze stuurt. **Valideert `destinationSession`:** een sessie zonder `@`-suffix wordt geweigerd (400) als de fleet-roster de seat vindt; diens tmux-sessie heeft dan een naam zonder `@rig`, die de daemon niet kan adresseren. Stuur in dat geval een Chat-bericht in plaats van een queue-taak, of hernoem de seat. |
 | POST | `/dash/queue/:qitemId/update` body `{ state, note? }` | `QueueItem` of `{ error }` |
 | POST | `/dash/queue/:qitemId/handoff` body `{ toSession, note? }` | `QueueItem` of `{ error }` |
 

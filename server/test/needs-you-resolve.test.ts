@@ -129,3 +129,39 @@ test("M5: ambiguous logicalId match -> no resolution", () => {
   );
   assert.equal(session, null);
 });
+// M5: dash in member resolves correctly.
+test("M5: dash in member resolves correctly", () => {
+  const live2: LiveSessions = new Map([
+    ["dashed-session", { rigName: "testrig", logicalId: "dev.code-x" }],
+  ]);
+  const session = resolveNeedsYouSession(
+    {
+      source: "derived",
+      identity: "dev-code-x@testrig|stuck|2026-09-24T11:00:00",
+      destinationSession: null,
+      qitemId: null,
+    },
+    null,
+    live2,
+  );
+  assert.equal(session, "dashed-session");
+});
+
+// M5: two different splits both match → ambiguous → null.
+test("M5: ambiguous dash position -> no resolution", () => {
+  const live2: LiveSessions = new Map([
+    ["s1", { rigName: "testrig", logicalId: "abc.def-ghi" }],
+    ["s2", { rigName: "testrig", logicalId: "abc-def.ghi" }],
+  ]);
+  const session = resolveNeedsYouSession(
+    {
+      source: "derived",
+      identity: "abc-def-ghi@testrig|stuck",
+      destinationSession: null,
+      qitemId: null,
+    },
+    null,
+    live2,
+  );
+  assert.equal(session, null);
+});

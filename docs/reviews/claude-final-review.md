@@ -318,3 +318,43 @@ Wat openstaat is minor en blokkeert v1 niet:
    veilig (unresolved, geen verkeerde terminal).
 4. **Scope-notitie:** wave-3-mutaties zijn bewust alleen op afwijzing getest (confirm, allowlist, pad, token). Een geslaagde down/restore/launch
    heb ik in deze review niet uitgevoerd. De servergerapporteerde dashtest-successen van de bouwers heb ik niet opnieuw gedaan.
+
+## Hercontrole vervolg
+
+Gedaan om 19:55 lokale tijd. `:7500` is gestart om 19:51:07, ná de laatste wijziging (19:43), met `DASH_MUTATION_ALLOWLIST=dashtest`. `npm test` geeft 12/12 [live].
+**Let op:** de serverwijzigingen van deze ronde (`index.ts`, `needs-you-resolve.ts`, `needs-you-resolve.test.ts`) zijn **niet gecommit**. `git status` geeft `M`, HEAD = 2b114c5.
+Ik heb zelf geen items aangemaakt.
+
+| # | Punt | Bron | Live | Oordeel |
+|---|---|---|---|---|
+| 1 | Rigfilter vóór limit | met rigfilter: daemon `limit=1000`, rosterfilter, dan het gevraagde limit (`index.ts` ~760-790) | `limit=1` → `b1461514` (dashboard-team, nieuwste overall); `rig=dashtest&limit=1` → `200773d8` (t-alpha@dashtest) | **opgelost.** Restrand: boven 1000 items in de fleet treedt hetzelfde effect op, nu acceptabel |
+| 2 | Streepjes-heuristiek | probeert elke `-` als pod/member-grens en accepteert alleen precies één match (`needs-you-resolve.ts` ~74-96). Tests `dev-code-x@testrig` → sessie en ambigu → `null` | tests groen; bestaande `dev-deepseek`-kaart blijft resolven | **opgelost** |
+| 3 | `normalizeSession` + bezorging | `dev-deepseek` → `dev-deepseek@dashboard-team` bij `POST /dash/queue` (`index.ts` ~820-835) | aanmaken lukt, **bezorgen niet** (zie hieronder) | **niet opgelost (major)** |
+
+**3 in detail [live].** `/api/queue/undelivered` bevat nu 6 rijen, allemaal `destinationSession=dev-deepseek@dashboard-team`, `pickup=unclaimed`:
+de drie items uit de slotcontrole (`fd70e731`, `cb929df6`, `bc8b4973`) en drie stuck-sweep-recoveryrijen (`qitem-recovery-7feba372…`, `e8326ca3…`, `e3f722ca…`).
+De daemon noemt de oorzaak letterlijk: `wake failed (failed:Session 'dev-deepseek@dashboard-team' not found: tmux reports no session with this name. No text was sent.)`.
+`tmux has-session -t dev-deepseek@dashboard-team` faalt, `tmux has-session -t dev-deepseek` slaagt. De daemon eist voor adressering `<naam>@<rig>`,
+maar wekt op de letterlijke tmux-naam. Voor een seat waarvan de canonieke sessie geen suffix heeft, kan dus geen enkel queue-item worden bezorgd.
+De recoveryrijen gaan naar hetzelfde onbereikbare adres, dus niemand krijgt ooit een melding.
+Het testitem van dev.deepseek (`qitem-20260924174401-b1461514`) bewijst niets over bezorging: het werd na 1 s gecanceld (`17:44:01.356Z` → `17:44:02.422Z`), ruim vóór de sweep (~3 min).
+
+Gevolg voor het dashboard: `normalizeSession` maakt van een luide daemon-400 (`unknown_destination_rig`) een **stil** succes. De UI meldt dat de taak is
+aangemaakt, maar de seat wordt nooit gewekt. Dat is slechter dan de fout die het verving.
+
+**Fix (tweeledig).**
+- *Dashboard, nu:* normaliseer niet stil. Is de canonieke sessie van de bestemming ≠ het adres dat de daemon accepteert, weiger dan met een duidelijke fout
+  ("seat dev-deepseek is niet bezorgbaar via de queue: canonieke sessie zonder @rig"), of accepteer met een expliciete `warning` in de respons en toon die in de UI.
+  Liefst ook een live-check achteraf: staat het nieuwe item in `/api/queue/undelivered`, meld dat dan.
+- *Topologie (operator/orch.lead):* de werkelijke oorzaak is dat `dev.deepseek` (en ook `dev.claudereview`, `dev.claude`, `dev.opencode`) een canonieke
+  sessie zonder `@rig` heeft. Herlaunch of hernoem die seats naar `<pod>-<member>@<rig>`, of laat de daemon bij het wekken via de canonieke sessie van de node resolven.
+  Dat is buiten de scope van het dashboard.
+
+**Opruimen (voor orch.lead, niet door mij gedaan):** de drie items en drie recoveryrijen hierboven staan open in de undelivered-lijst. orch.lead heeft het werk
+rechtstreeks aan dev.deepseek gegeven, dus deze rijen kunnen gecanceld worden. Dan sluit de sweep zijn eigen findings.
+
+**Oordeel:** 1 en 2 opgelost en live bevestigd. 3 is niet opgelost: aanmaken werkt, bezorgen niet, en de stille normalisatie verbergt dat. Het oordeel "v1 klaar"
+blijft staan, want het kernpad needs-you → terminal is hier niet van afhankelijk. Queue-taken aan seats zonder `@rig` zijn echter aantoonbaar onbezorgbaar en dat
+moet de UI eerlijk melden. Daarnaast: commit de serverwijzigingen van deze ronde nog.
+
+- **opgelost in: `POST /dash/queue` + `rejectBareSession` (server/src/index.ts).** Stille normalisatie verwijderd. Als `destinationSession` geen `@` bevat en de fleet-roster de seat in precies één rig vindt, weigert de server met duidelijke 400: "Seat 'dev-deepseek' (logicalId dev.deepseek) cannot receive queue tasks: its tmux session is named 'dev-deepseek', but the daemon addresses it as 'dev-deepseek@dashboard-team' and cannot deliver there. Use Chat to send a message, or rebind the seat ...". `docs/CONTRACT.md` vermeldt deze validatie. Geverifieerd: `POST /dash/queue destinationSession=dev-deepseek` → 400 met de foutboodschap (geen daemon-contact).
