@@ -25,11 +25,12 @@ const mockMode = import.meta.env.VITE_MOCK === '1'
 async function dashboardFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
   const body: unknown = await response.json().catch(() => null)
+  // Prefer the human-readable explanation over the machine code when the server sends both.
   const message =
-    body && typeof body === 'object' && 'error' in body
-      ? String(body.error)
-      : body && typeof body === 'object' && 'message' in body
-        ? String(body.message)
+    body && typeof body === 'object' && 'message' in body && body.message
+      ? String(body.message)
+      : body && typeof body === 'object' && 'error' in body
+        ? String(body.error)
         : `Request failed (${response.status})`
   if (!response.ok || (body && typeof body === 'object' && 'error' in body)) throw new Error(message)
   return body as T

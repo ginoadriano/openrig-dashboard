@@ -404,6 +404,14 @@ function daemonClosureReason(state: string): string | undefined {
   }
 }
 
+// Helper: build a daemon-error response that passes through both `error` (code)
+// and `message` (explanation) so the web UI can show the explanation.
+function daemonErrResponse(raw: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { error: (raw.error as string) ?? "daemon_error" };
+  if (typeof raw.message === "string" && raw.message) body.message = raw.message;
+  return body;
+}
+
 // -- Origin + Host guard middleware (fix 2, M1) ---------------------------
 app.use("*", async (c, next) => {
   const method = c.req.method;
@@ -869,9 +877,9 @@ app.post("/dash/queue", async (c) => {
       headers: { ...daemonHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(daemonBody),
     });
-    const data = await res.json() as DaemonQueueItem | { error?: string };
-    if (!res.ok || (data as { error?: string }).error) {
-      return c.json({ error: (data as { error?: string }).error ?? `http_${res.status}` }, (res.ok ? 200 : res.status) as any);
+    const data = await res.json() as { error?: string; message?: string };
+    if (!res.ok || data.error) {
+      return c.json(daemonErrResponse(data as Record<string, unknown>), (res.ok ? 200 : res.status) as any);
     }
     return c.json(mapQueueItem(data as DaemonQueueItem), 201);
   } catch (e) {
@@ -900,9 +908,9 @@ app.post("/dash/queue/:qitemId/update", async (c) => {
       headers: { ...daemonHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify(daemonBody),
     });
-    const data = await res.json() as DaemonQueueItem | { error?: string };
-    if (!res.ok || (data as { error?: string }).error) {
-      return c.json({ error: (data as { error?: string }).error ?? `http_${res.status}` }, (res.ok ? 200 : res.status) as any);
+    const data = await res.json() as { error?: string; message?: string };
+    if (!res.ok || data.error) {
+      return c.json(daemonErrResponse(data as Record<string, unknown>), (res.ok ? 200 : res.status) as any);
     }
     return c.json(mapQueueItem(data as DaemonQueueItem));
   } catch (e) {
@@ -922,6 +930,10 @@ app.post("/dash/queue/:qitemId/handoff", async (c) => {
   if (typeof body.toSession !== "string" || !validParam(body.toSession, SESSION_PATTERN))
     return c.json({ error: "invalid toSession" }, 400);
 
+  // Slotcontrole #3: refuse handoff to a bare session (no @rig suffix).
+  const bare = await rejectBareSession(body.toSession);
+  if (bare) return c.json({ error: bare }, 400);
+
   try {
     const res = await daemonFetch(`/api/queue/${encodeURIComponent(qitemId)}/handoff`, {
       method: "POST",
@@ -930,7 +942,7 @@ app.post("/dash/queue/:qitemId/handoff", async (c) => {
     });
     const raw = await res.json() as Record<string, unknown>;
     if (!res.ok || raw.error) {
-      return c.json({ error: (raw.error as string) ?? `http_${res.status}` }, (res.ok ? 200 : res.status) as any);
+      return c.json(daemonErrResponse(raw), (res.ok ? 200 : res.status) as any);
     }
     const created = raw.created as DaemonQueueItem | undefined;
     return c.json(mapQueueItem(created ?? (raw as DaemonQueueItem)));
