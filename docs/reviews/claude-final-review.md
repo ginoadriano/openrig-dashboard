@@ -358,3 +358,41 @@ blijft staan, want het kernpad needs-you → terminal is hier niet van afhankeli
 moet de UI eerlijk melden. Daarnaast: commit de serverwijzigingen van deze ronde nog.
 
 - **opgelost in: `POST /dash/queue` + `rejectBareSession` (server/src/index.ts).** Stille normalisatie verwijderd. Als `destinationSession` geen `@` bevat en de fleet-roster de seat in precies één rig vindt, weigert de server met duidelijke 400: "Seat 'dev-deepseek' (logicalId dev.deepseek) cannot receive queue tasks: its tmux session is named 'dev-deepseek', but the daemon addresses it as 'dev-deepseek@dashboard-team' and cannot deliver there. Use Chat to send a message, or rebind the seat ...". `docs/CONTRACT.md` vermeldt deze validatie. Geverifieerd: `POST /dash/queue destinationSession=dev-deepseek` → 400 met de foutboodschap (geen daemon-contact).
+
+**Addendum (na adoptie van dev.claudereview in dashboard-team) [live].** De operator heeft de topologie aangepast. `rig ps --nodes` toont nu
+`dev-deepseek@dashboard-team` en `dev-claudereview@dashboard-team`, en `tmux has-session -t dev-deepseek@dashboard-team` slaagt. De structurele oorzaak van punt 3
+is daarmee voor deze seats weg: nieuwe items aan `dev-deepseek@dashboard-team` zouden nu gewekt moeten kunnen worden (niet getest; ik maak geen items aan).
+De 6 oude rijen staan nog wél in `/api/queue/undelivered`: hun enige wake-poging faalde en de daemon probeert niet opnieuw. Ze hebben een re-nudge of cancel nodig (orch.lead).
+Het dashboardpunt blijft als minor staan: `normalizeSession` normaliseert nog steeds stil. Voor een seat zonder `@rig` in een toekomstige rig zou hetzelfde weer optreden.
+
+## Herreview m9
+
+Gedaan om 20:50 lokale tijd tegen commits `ac57072`, `2b114c5` en `32d8509` (feat/dashboard-v1). `:7500` is gestart om 20:36:40, ná de laatste bronwijziging, **zonder** `DASH_MUTATION_ALLOWLIST`.
+Er is geen enkel muterend verzoek geslaagd en er is niets aangemaakt (controle: 0 daemonitems met `REVIEW PROBE` in de body).
+
+**Bron.** `web/src/QueueView.tsx` `NewTaskDialog`: de Destination-select heeft de optgroups "Fleet seats" en "Mens" (`human@kernel` + "Other human address…" met een vrij veld).
+Is de bestemming een human-ref (`^human(-…)?@(kernel|host)$` of `…@external`), dan verschijnen Summary en Evidence reference (`required`). `create()` blokkeert
+vóór `createQueue` als een van beide leeg is. Een vrij adres dat geen human-ref is, wordt geweigerd. `web/src/api.ts` `createQueue` stuurt `summary` en `evidenceRef` mee; de mock dwingt hetzelfde af.
+
+**Browser [live].** Headless Edge via CDP (eigen instantie, poort 9223, wegwerpprofiel; pagina en Edge daarna gesloten; 0 resterende processen). Alle niet-GET-verzoeken naar `/dash/` zijn opgenomen:
+- Standaard (fleet-seat): velden `Destination, Priority, Task body`. Met `human@kernel` komen `Summary` en `Evidence reference` erbij (beide `required=true`). Terug naar een seat: de velden verdwijnen weer.
+- (a) *Create task* zonder summary/evidence, en ook met alleen summary: inline `role=alert` "A summary and evidence reference are required for a human-routed task."
+- "Other human address…" met `human-review@host` zonder velden: dezelfde blokkade. Met `dev-x@rig`: "Enter a human address, such as human@kernel or human-review@host."
+- **0 POST/PUT-verzoeken** naar `/dash/` tijdens de hele sessie. De blokkade zit dus echt in de UI.
+
+**Server [live].** (b) `POST /dash/queue` naar `human@kernel` zonder velden geeft `400 {"error":"human_route_fields_required"}`, ook met alleen summary. De daemon weigert en er wordt niets aangemaakt.
+
+**Correctie op het addendum: bare sessions.** Klopt: `normalizeSession` bestaat niet meer. Sinds `32d8509` controleert `rejectBareSession` (`server/src/index.ts`) vóór elk daemonverzoek of een
+bestemming zonder `@` een bekende fleet-seat is, en weigert die met een uitleggende 400 ("…cannot receive queue tasks… Use Chat… or rebind…"). Een onbekende bare naam
+(`dev-nobody`) gaat door naar de daemon en geeft `400 unknown_destination_rig` [live]; ook dat is luid, en er wordt niets aangemaakt.
+Het `rejectBareSession`-pad zelf kon ik niet live raken, omdat er op dit moment geen enkele seat meer zonder `@rig` is: de dropdown toont alle 15 seats als `<naam>@<rig>`. Dit deel is daarom [bron].
+**Herbeoordeling:** mijn minor "stil normaliseren" vervalt. Opgelost.
+
+**Kleine resten (geen blokkade):**
+- De server geeft bij een daemonfout alleen de code door (`human_route_fields_required`), niet de uitleggende `message` van de daemon. De UI toont dan de kale code. Dat is alleen bereikbaar als de UI-validatie wordt omzeild.
+- Handoff (`POST /dash/queue/:id/handoff`) heeft geen `rejectBareSession`. De daemon weigert een onbekend bare adres wel luid, maar een bekende bare seat zou daar niet de uitleggende melding krijgen. Nu niet relevant, want er zijn geen bare seats.
+- Ingevulde summary/evidence blijven in de state als je terugwisselt naar een fleet-seat, en worden dan (verborgen) meegestuurd. Onschadelijk.
+- Het optgroup-label "Mens" is Nederlands in een verder Engelstalige UI (cosmetisch).
+- In de takenlijst staan pending testitems van `operator-human@kernel` ("test valid dest", "test normal session…"), niet van mij. Opruimen is aan de maker.
+
+**Oordeel m9: COMPLEET, ja.** De web- en serverkant zijn in bron en live geverifieerd, en de correctie over bare sessions is terecht en live bevestigd voor zover de huidige topologie dat toelaat.
