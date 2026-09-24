@@ -24,6 +24,7 @@ const transitionTime = (value: string | null | undefined) => {
 }
 const isHumanDestination = (session: string) =>
   /^human(?:-[^@]+)?@(kernel|host)$/.test(session) || session.endsWith('@external')
+const otherHumanOption = '__other_human__'
 
 export function QueueView({ fleet, seatSession, onOpenOwner, refreshKey = 0 }: QueueViewProps) {
   const [items, setItems] = useState<QueueItem[]>([])
@@ -311,7 +312,8 @@ function NewTaskDialog({
   onClose: () => void
   onCreated: () => Promise<void>
 }) {
-  const [destinationSession, setDestinationSession] = useState(seats[0]?.session ?? '')
+  const [destinationChoice, setDestinationChoice] = useState(seats[0]?.session ?? '')
+  const [otherHumanSession, setOtherHumanSession] = useState('')
   const [body, setBody] = useState('')
   const [priority, setPriority] = useState('routine')
   const [summary, setSummary] = useState('')
@@ -319,7 +321,13 @@ function NewTaskDialog({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const create = async () => {
+    const destinationSession =
+      destinationChoice === otherHumanOption ? otherHumanSession.trim() : destinationChoice
     const humanDestination = isHumanDestination(destinationSession)
+    if (destinationChoice === otherHumanOption && !humanDestination) {
+      setError('Enter a human address, such as human@kernel or human-review@host.')
+      return
+    }
     if (!destinationSession || !body.trim()) {
       setError('Choose a destination and write the task body.')
       return
@@ -359,15 +367,35 @@ function NewTaskDialog({
         </header>
         <label>
           Destination
-          <select value={destinationSession} onChange={(event) => setDestinationSession(event.target.value)}>
-            {seats.map((seat) => (
-              <option key={seat.session} value={seat.session}>
-                {seat.logicalId} · {seat.session}
-              </option>
-            ))}
+          <select value={destinationChoice} onChange={(event) => setDestinationChoice(event.target.value)}>
+            <optgroup label="Fleet seats">
+              {seats.map((seat) => (
+                <option key={seat.session} value={seat.session}>
+                  {seat.logicalId} · {seat.session}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Mens">
+              <option value="human@kernel">human@kernel</option>
+              <option value={otherHumanOption}>Other human address…</option>
+            </optgroup>
           </select>
         </label>
-        {isHumanDestination(destinationSession) && (
+        {destinationChoice === otherHumanOption && (
+          <label>
+            Human address
+            <input
+              value={otherHumanSession}
+              onChange={(event) => setOtherHumanSession(event.target.value)}
+              placeholder="human-review@host"
+              required
+            />
+          </label>
+        )}
+        {(destinationChoice === otherHumanOption ||
+          isHumanDestination(
+            destinationChoice === otherHumanOption ? otherHumanSession.trim() : destinationChoice,
+          )) && (
           <>
             <label>
               Summary
