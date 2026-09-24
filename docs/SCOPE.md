@@ -1,50 +1,64 @@
-# OpenRig Dashboard — scope v1
+# Scope — OpenRig Dashboard v1
 
-Status: vastgesteld 2026-09-24 met Gino (operator). Eigenaar: orch.lead.
+Status: **v1 delivered** on 2026-09-24. Owner of the scope: the operator.
 
-## Doel
-Een grafische, klikbare vervanging voor OpenRig's eigen web-UI en `rig tui`, gebouwd
-bovenop de OpenRig-daemon (`http://127.0.0.1:7433`). Aanvoelen als de Claude desktop-app.
-De kern: **elke needs-you-kaart opent echt een live terminal/chat met de juiste seat.**
+## 1. Purpose
 
-## Besluiten (operator)
-| Vraag | Besluit |
+The dashboard is a graphical interface for OpenRig. It must be as easy to use as the Claude desktop application.
+It replaces the built-in OpenRig web UI and `rig tui`.
+
+The primary requirement: each **Needs you** card must open a live terminal of the correct seat.
+The built-in OpenRig web UI does not do this. It shows "No session resolved for this card".
+
+## 2. Decisions of the operator
+
+| Subject | Decision |
 |---|---|
-| Acties v1 | Needs-you → live terminal · chat/bericht sturen · status per agent · queue/taken beheren |
-| Navigatie | Sidebar zoals de Claude-app: Needs-you bovenaan, daaronder rigs → seats; rechts seat-detail met tabs Chat / Terminal |
-| Rig-beheer | Ja, volledig (up/down/launch/bind, model, permissies) |
-| Runtime | Eerst lokale web-app, later desktop-schil (Electron/Tauri) — architectuur daarop voorbereiden |
+| Actions in v1 | Needs you → live terminal. Chat (send a message, read output). Status of each seat. Queue management. |
+| Navigation | A sidebar as in the Claude desktop application: Needs you and Tasks at the top, then rigs and their seats. The seat detail is on the right side, with the tabs Chat, Terminal and Tasks. |
+| Rig management | Full: start, stop, archive, snapshot, restore, seat launch and stop, model, posture, discovery and bind. |
+| Kernel rig | Show it as a usual rig, with management. |
+| Runtime | First a local web application. Later a desktop shell. See `DESKTOP-SHELL.md`. |
 
-## Architectuur (voorstel orch.lead)
-- `server/`: kleine Node/TypeScript-server in WSL (bijv. `localhost:7500`). Serveert de UI,
-  proxyt REST + terminal-websocket naar de daemon, houdt bearer-tokens server-side.
-  Rig-beheer-acties die de daemon niet via HTTP biedt gaan via een vaste allowlist van
-  `rig`-CLI-commando's (geen vrije shell).
-- `web/`: Vite + React + TypeScript, xterm.js voor de terminal.
-- UI praat alleen met `server/`, nooit direct met de daemon → later zonder wijziging in een
-  desktop-schil te hangen.
+## 3. Delivered scope
 
-## Waves
-1. **Fundament + kernpad**: server-proxy, sidebar (rigs/seats met live status), needs-you-lijst,
-   seat-detail met werkende Terminal-tab (websocket) en Chat-tab (send + recente output).
-   Acceptatie: elke needs-you-kaart → klik → interactieve terminal van precies die seat.
-2. **Queue/taken**: lijst per seat/rig, aanmaken, toewijzen/handoff, afsluiten.
-3. **Rig-beheer**: rigs starten/stoppen, seats launchen/binden, model- en permissiekeuze.
-   Destructieve acties achter een bevestigingsdialoog met rig-naam.
+The work was done in three waves. An independent reviewer examined each wave.
 
-Review: dev.reviewer reviewt onafhankelijk aan het eind van elke wave, vóór "klaar".
+| Wave | Contents |
+|---|---|
+| 1 | Server proxy, sidebar with live status, Needs you list, Chat tab, Terminal tab (WebSocket). |
+| 2 | Queue: list, filter, detail with history, create, update, hand off. |
+| 3 | Rig management: rigs, seats, snapshots, posture, discovery and bind. |
 
-## Veiligheidsgrenzen
-- Mutaties op draaiende rigs van de operator (`first-project`, `dashboard-team`, kernel) worden
-  tijdens ontwikkeling **niet** getest. Wave 3 wordt getest op een aparte, wegwerpbare test-rig
-  of tegen mocks.
-- Geen push/publish zonder toestemming van de operator.
+### 3.1 Needs-you resolution
 
-## Bekende OpenRig 0.5.14-eigenaardigheden om rekening mee te houden
-- CLI-commando's als `expand`/`spec show`/`launch` vereisen de rigId (ULID), niet de naam.
-- Modelkeuze is niet persistent na herstart van een Codex-seat.
-- herdr-terminalintegratie werkt niet; de daemon-websocket `/api/terminal/:sessionName` is de route.
+The daemon does not always give a terminal session for a Needs you item. The server finds the session in this sequence:
 
-## Verkenning (lopend)
-- `docs/discovery/api-inventory.md` — dev.codexdev
-- `docs/discovery/needs-you-mapping.md` — dev.deepseek
+1. The destination session of the item.
+2. The source session of the item. For a queue item, the server reads it from `/api/queue/:qitemId`.
+3. The session part of the item identity (the text before the first `|`).
+4. A logical-ID match: the server converts `<pod>-<member>@<rig>` to the seat `<pod>.<member>` in that rig. It accepts only one unique match.
+
+The server accepts a candidate only if it is a live seat (`sessionStatus` is `running`).
+It never accepts a human address (`human@…`). If no candidate is acceptable, the item goes into the `unresolved` list.
+The web interface shows unresolved items with an explanation, and without a terminal button.
+
+A seat that waits at a permission prompt (`activity = needs_input`) also gives a Needs you card of kind `permission_prompt`.
+
+## 4. Safety limits
+
+- The server binds only to `127.0.0.1`.
+- The server refuses a request with an unknown `Host` header. This prevents DNS rebinding.
+- The server refuses a change or a WebSocket upgrade with a missing or unknown `Origin` header.
+- The server validates each identifier (session, rig ID, queue item ID, snapshot ID) before it sends it to the daemon.
+- A destructive action requires the exact rig or session name as a confirmation. The server checks it again.
+- Actions on the rigs `dashboard-team` and `kernel` show an additional warning.
+- The browser never receives a daemon token.
+- During development, set `DASH_MUTATION_ALLOWLIST=dashtest`. Then management works only on the disposable test rig
+  `test/fixtures/rig-dashtest.yaml`. Do not test destructive actions on a rig of the operator.
+
+## 5. Out of scope for v1
+
+- The desktop shell (next phase, see `DESKTOP-SHELL.md`).
+- Access from another computer. The dashboard is local only.
+- Changes to OpenRig itself. The dashboard uses only the daemon API.

@@ -4,7 +4,9 @@
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"npm --prefix server run dev\" \"npm --prefix web run dev -- --host 127.0.0.1 --port 5173\"",
     "build": "npm --prefix server run build && npm --prefix web run build",
-    "check": "npm --prefix server run typecheck && npm --prefix web run lint && npm --prefix web run build"
+    "check": "npm --prefix server run typecheck && npm --prefix web run lint && npm --prefix web run build",
+    "test": "npm --prefix server test",
+    "smoke": "./test/smoke.sh"
   },
   "devDependencies": {
     "concurrently": "^10.0.5"
