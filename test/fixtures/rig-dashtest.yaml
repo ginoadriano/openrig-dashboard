@@ -1,0 +1,20 @@
+version: "0.2"
+name: dashtest
+summary: >
+  Wegwerp-test-rig voor het OpenRig-dashboard (wave 3 rig-beheer). Alleen gewone shells,
+  geen AI-agents. Mag vrij gestopt, hersteld en weggegooid worden.
+
+pods:
+  - id: t
+    label: Test
+    members:
+      - id: alpha
+        agent_ref: "builtin:terminal"
+        runtime: terminal
+        profile: none
+        cwd: "."
+      - id: beta
+        agent_ref: "builtin:terminal"
+        runtime: terminal
+        profile: none
+        cwd: "."
