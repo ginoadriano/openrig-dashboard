@@ -101,4 +101,4 @@ Set these environment variables for `server/`:
 
 ## License
 
-No license is set yet. All rights reserved by the author until a license is added.
+MIT. See [LICENSE](LICENSE).
